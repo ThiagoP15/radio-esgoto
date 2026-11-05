@@ -1,0 +1,30 @@
+# Sobe o servidor (Node + SQLite) e o Caddy (HTTPS automático) com:  docker compose up -d --build
+services:
+  app:
+    build: ./server
+    restart: unless-stopped
+    env_file: ./server/.env          # segredos: fora do Git (veja server/.env.example)
+    volumes:
+      - radio_data:/data             # database.sqlite e uploads/ sobrevivem a reinícios e atualizações
+    expose:
+      - "3001"                       # só o Caddy enxerga; não é publicado na internet
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"                      # HTTP (necessário para emitir o certificado e redirecionar)
+      - "443:443"                    # HTTPS
+    environment:
+      DOMAIN: ${DOMAIN:?defina DOMAIN no arquivo .env da raiz}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data             # certificados
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  radio_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,5 @@
+# Proxy reverso com HTTPS automático (Let's Encrypt). WebSocket (Socket.io) passa sem configuração extra.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy app:3001
+}
