@@ -3,6 +3,7 @@
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session, shell, systemPreferences } = require('electron');
+const { autoUpdater } = require('electron-updater');
 
 // `npm run dev` passa --dev (carrega o Vite). Sem a flag (npm run start / app empacotado) carrega o build.
 const isDev = !app.isPackaged && process.argv.includes('--dev');
@@ -20,7 +21,10 @@ protocol.registerSchemesAsPrivileged([
 // Só a nossa própria interface é confiável (compara a origem, não o prefixo do texto).
 function isTrustedUrl(raw) {
   try {
-    return new URL(raw).origin === (isDev ? new URL(DEV_URL).origin : APP_ORIGIN);
+    const url = new URL(raw);
+    if (isDev) return url.origin === new URL(DEV_URL).origin;
+    // Verifica o protocolo e o domínio em vez de usar o .origin que falha no Node
+    return url.protocol === 'app:' && url.hostname === 'radio-esgoto';
   } catch {
     return false;
   }
@@ -105,8 +109,7 @@ function configureSession(ses) {
     if (!isTrustedUrl(details.requestingUrl ?? webContents.getURL())) return callback(false);
     if (permission === 'notifications') return callback(true);
     if (permission === 'media') {
-      const types = details.mediaTypes ?? [];
-      return callback(types.length > 0 && types.every((t) => t === 'audio'));
+      return callback(true); // Permite microfone e partilha de ecrã
     }
     return callback(false);
   });
@@ -142,6 +145,10 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone').catch(() => {});
 
     createWindow();
+    
+    // Inicia a verificação de atualizações em segundo plano
+    autoUpdater.checkForUpdatesAndNotify();
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

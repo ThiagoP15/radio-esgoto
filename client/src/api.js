@@ -1,4 +1,4 @@
-export const SERVER_URL = (import.meta.env.VITE_SERVER_URL || 'http://localhost:3001').replace(/\/$/, '');
+export const SERVER_URL = (import.meta.env.VITE_SERVER_URL || 'https://radio-esgoto.duckdns.org').replace(/\/$/, '');
 
 /** O servidor guarda caminhos relativos (/uploads/...); aqui viram URLs completas. */
 export const assetUrl = (path) => (path ? `${SERVER_URL}${path}` : null);

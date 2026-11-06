@@ -24,7 +24,7 @@ function Section({ title, list, dim }) {
 export default function MembersPanel({ members }) {
   const sorted = [...members].sort((a, b) => a.username.localeCompare(b.username, 'pt-BR'));
   return (
-    <aside className="members" aria-label="Membros">
+    <aside className="members sem-scroll" aria-label="Membros">
       <Section title={COPY.membersOnline} list={sorted.filter((m) => m.status !== 'offline')} />
       <Section title={COPY.membersOffline} list={sorted.filter((m) => m.status === 'offline')} dim />
     </aside>

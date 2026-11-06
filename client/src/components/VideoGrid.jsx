@@ -12,6 +12,22 @@ function VideoTile({ tile }) {
     };
   }, [tile.stream]);
 
+  // Função robusta para alternar entre entrar e sair da tela cheia
+  const toggleFullscreen = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await video.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.error(`Erro ao tentar alterar tela cheia: ${err.message}`);
+    }
+  };
+
   return (
     <figure className={`video-tile ${tile.local ? 'is-local' : ''}`}>
       {/* A prévia local é muda (senão o áudio da própria tela volta em eco) */}
@@ -19,7 +35,7 @@ function VideoTile({ tile }) {
       <figcaption>
         <span>{tile.label}</span>
         <span className="video-actions">
-          <button type="button" className="link-button" onClick={() => videoRef.current?.requestFullscreen?.()}>
+          <button type="button" className="link-button" onClick={toggleFullscreen}>
             Tela cheia
           </button>
           {tile.local && (

@@ -7,12 +7,28 @@
   "scripts": {
     "dev": "concurrently -k -n vite,electron -c magenta,cyan \"vite\" \"wait-on tcp:localhost:5173 && electron . --dev\"",
     "build": "vite build",
-    "start": "vite build && electron ."
+    "start": "vite build && electron .",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "build": {
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ThiagoP15",
+        "repo": "radio-esgoto"
+      }
+    ],
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ]
   },
   "dependencies": {
     "@fontsource/bebas-neue": "^5.1.0",
     "@fontsource/inter": "^5.1.0",
     "@fontsource/special-elite": "^5.1.0",
+    "electron-updater": "^6.8.11",
     "emoji-picker-react": "^4.12.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -23,6 +39,7 @@
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.0",
     "electron": "^33.2.0",
+    "electron-builder": "^26.18.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "vite": "^5.4.11",

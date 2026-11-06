@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const serverUrl = (env.VITE_SERVER_URL || 'http://localhost:3001').replace(/\/$/, '');
+  const serverUrl = (env.VITE_SERVER_URL || 'https://radio-esgoto.duckdns.org').replace(/\/$/, '');
   const wsUrl = serverUrl.replace(/^http/, 'ws');
 
   // CSP só no build: em dev o plugin do React injeta um script inline.
