@@ -519,3 +519,93 @@ select { background: var(--bg-0); }
   .channel.is-active::after, .toast { animation: none; }
   *, *::before, *::after { transition-duration: 0.01ms !important; }
 }
+/* ==========================================================================================
+   ATUALIZAÇÃO DO CANAL DE VOZ (ESTILO DISCORD COM TEMA DO ESGOTO)
+   ========================================================================================== */
+
+/* Remove a formatação antiga em colunas e força o alinhamento horizontal */
+.participants { 
+  display: flex !important; 
+  flex-direction: column !important; 
+  gap: 15px !important; 
+}
+
+/* Estrutura de cada linha de utilizador no painel de voz */
+.participants li { 
+  display: flex !important; 
+  flex-direction: row !important; 
+  align-items: center !important; 
+  justify-content: space-between !important; 
+  gap: 10px !important; 
+  max-width: 100% !important; /* Sobrescreve o max-width: 120px antigo */
+  background-color: var(--bg-1) !important; /* Cor de painel definida no seu tema */
+  padding: 10px !important; 
+  border-radius: 8px !important;
+  border: 1px solid var(--bg-2);
+}
+
+/* Garante que o Nome e o Avatar fiquem agrupados */
+.participants li > div:first-child {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-width: max-content;
+}
+
+/* Garante que o Microfone e a Barra de Volume fiquem alinhados */
+.participants li > div:nth-child(2) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+/* === BARRA DE VOLUME: ESTÉTICA DO LATÃO/FERRUGEM === */
+.participants input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 6px;
+  background: var(--bg-2); /* Trilho escuro */
+  border: 1px solid var(--brass-dim); /* Borda em latão envelhecido */
+  border-radius: 3px;
+  outline: none;
+  margin: 0;
+}
+
+/* A bolinha de arrastar do volume */
+.participants input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--amber-glow); /* Brilho de lâmpada de sódio */
+  border: 2px solid var(--bg-0);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(224, 164, 47, 0.4);
+  transition: transform var(--t-fast), box-shadow var(--t-fast);
+}
+
+.participants input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  background: #fff;
+  box-shadow: 0 0 10px rgba(224, 164, 47, 0.8);
+}
+
+/* === LIMPEZA DE TELA QUANDO HÁ PARTILHA DE ECRÃ === */
+.voice-container.is-sharing .voice {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+.voice-container.is-sharing .chat-header,
+.voice-container.is-sharing .voice-body {
+  display: none !important; /* Esconde tudo exceto o rodapé e o grid de vídeo */
+}
+
+/* === BOTÃO DE OCULTAR TELA (ESTILO APROVAR/SECUNDÁRIO) === */
+.btn-ocultar {
+  margin-left: auto;
+  white-space: nowrap;
+}

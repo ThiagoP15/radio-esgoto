@@ -42,6 +42,7 @@ function createWindow() {
     backgroundColor: '#0b0d0c',
     show: false,
     autoHideMenuBar: true,
+    fullscreenable: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

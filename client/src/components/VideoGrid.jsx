@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 function VideoTile({ tile }) {
+  const tileRef = useRef(null); // Referência para a caixa inteira
   const videoRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // O <video> é criado quando a transmissão aparece e desmontado quando ela some.
+  // Liga o vídeo à stream
   useEffect(() => {
     const video = videoRef.current;
     if (video) video.srcObject = tile.stream;
@@ -12,14 +14,23 @@ function VideoTile({ tile }) {
     };
   }, [tile.stream]);
 
-  // Função robusta para alternar entre entrar e sair da tela cheia
+  // Deteta se o utilizador entrou ou saiu da tela cheia (mesmo carregando na tecla ESC)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === tileRef.current);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   const toggleFullscreen = async () => {
-    const video = videoRef.current;
-    if (!video) return;
+    const container = tileRef.current;
+    if (!container) return;
 
     try {
       if (!document.fullscreenElement) {
-        await video.requestFullscreen();
+        // Coloca a CAIXA inteira em tela cheia, não apenas o vídeo
+        await container.requestFullscreen();
       } else {
         await document.exitFullscreen();
       }
@@ -29,14 +40,13 @@ function VideoTile({ tile }) {
   };
 
   return (
-    <figure className={`video-tile ${tile.local ? 'is-local' : ''}`}>
-      {/* A prévia local é muda (senão o áudio da própria tela volta em eco) */}
+    <figure ref={tileRef} className={`video-tile ${tile.local ? 'is-local' : ''}`}>
       <video ref={videoRef} autoPlay playsInline muted={tile.local} />
       <figcaption>
         <span>{tile.label}</span>
         <span className="video-actions">
           <button type="button" className="link-button" onClick={toggleFullscreen}>
-            Tela cheia
+            {isFullscreen ? 'Sair da Tela Cheia' : 'Tela cheia'}
           </button>
           {tile.local && (
             <button type="button" className="btn btn-danger btn-small" onClick={tile.onStop}>
@@ -49,7 +59,6 @@ function VideoTile({ tile }) {
   );
 }
 
-// Transmissões ativas da chamada: a sua (local) e as dos outros (remotas).
 export default function VideoGrid({ tiles }) {
   if (tiles.length === 0) return null;
   return (
