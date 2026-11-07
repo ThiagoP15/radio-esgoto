@@ -1,10 +1,6 @@
 /**
  * Sessão de voz em malha P2P (mesh): uma RTCPeerConnection por pessoa na sala.
  * O Socket.io só faz a sinalização (offer / answer / ice-candidate), sempre dentro da sala.
- *
- * Usa o padrão "perfect negotiation": qualquer lado pode renegociar a qualquer momento
- * (ex.: ao ligar ou desligar o compartilhamento de tela) sem travar em colisões de offer.
- * Em caso de colisão, quem tem o socket.id menor é o "polido" e cede.
  */
 const audioConstraints = (enabled) => ({
   noiseSuppression: enabled,
@@ -48,7 +44,6 @@ export class VoiceSession {
       throw new Error(res?.error ?? 'Não foi possível entrar na sala.');
     }
 
-    // Quem chega cria as conexões com quem já estava; os outros criam ao receber peer-joined.
     for (const peer of res.peers) this.createPeer(peer.socketId, peer.user, peer.screenStreamId);
     this.emitUpdate();
     return undefined;
@@ -100,14 +95,12 @@ export class VoiceSession {
       if (pc.iceConnectionState === 'failed') pc.restartIce();
     };
 
-    // Chegou uma track remota: vídeo = tela de alguém (vira um <video> no VideoGrid); áudio = voz.
     pc.ontrack = ({ track, streams }) => {
       const stream = streams[0] ?? new MediaStream([track]);
       const isScreen = track.kind === 'video' || (peer.screenStreamId && stream.id === peer.screenStreamId);
       if (isScreen) {
         peer.screenStream = stream;
         peer.screenStreamId ??= stream.id;
-        // Quando a pessoa para de compartilhar, a track some: tira o vídeo do grid mesmo sem o aviso do servidor.
         stream.onremovetrack = () => {
           if (stream.getVideoTracks().length === 0 && peer.screenStream === stream) {
             peer.screenStream = null;
@@ -145,7 +138,7 @@ export class VoiceSession {
         peer.ignoreOffer = !peer.polite && collision;
         if (peer.ignoreOffer) return;
 
-        await pc.setRemoteDescription(description); // o lado polido faz rollback implícito
+        await pc.setRemoteDescription(description);
         await this.flushCandidates(peer);
         await pc.setLocalDescription();
         this.socket.emit('answer', { to: from, data: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
@@ -161,7 +154,6 @@ export class VoiceSession {
   async onCandidate({ from, data: candidate }) {
     const peer = this.peers.get(from);
     if (!peer) return;
-    // Candidatos podem chegar antes da descrição remota: ficam na fila.
     if (!peer.pc.remoteDescription) {
       peer.pendingCandidates.push(candidate);
       return;
@@ -183,16 +175,23 @@ export class VoiceSession {
     }
   }
 
-  // --- Compartilhamento de tela ---------------------------------------------------
+  // --- Compartilhamento de tela (Sem Eco) ---------------------------------------
   async startScreenShare() {
     if (this.screenStream || this.stopped) return;
 
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-    this.screenStream = stream; // também é o vídeo LOCAL mostrado (mudo) no VideoGrid
+    // Captura apenas vídeo (audio: false) ou exclui áudio do sistema para impedir
+    // que a saída de som do Rádio Esgoto volte para a chamada gerando microfonia/eco.
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        frameRate: { ideal: 30, max: 60 },
+      },
+      audio: false,
+    });
 
-    // Avisa ANTES de adicionar as tracks: os outros já sabem qual stream é a tela quando o offer chegar.
+    this.screenStream = stream;
+
     this.socket.emit('voice:screen', { sharing: true, streamId: stream.id });
-    for (const peer of this.peers.values()) this.addScreenTracks(peer); // dispara renegociação
+    for (const peer of this.peers.values()) this.addScreenTracks(peer);
 
     stream.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreenShare());
     this.emitUpdate();
@@ -202,7 +201,6 @@ export class VoiceSession {
     peer.screenSenders = this.screenStream.getTracks().map((track) => peer.pc.addTrack(track, this.screenStream));
   }
 
-  /** Parar a transmissão: remove as tracks das conexões, encerra a captura e avisa os outros. */
   stopScreenShare() {
     if (!this.screenStream) return;
 
@@ -237,7 +235,6 @@ export class VoiceSession {
     });
   }
 
-  /** Liga/desliga supressão de ruído, cancelamento de eco e ganho automático. */
   async setNoiseSuppression(enabled) {
     const track = this.localStream?.getAudioTracks()[0];
     if (!track || this.stopped) return;
@@ -245,10 +242,9 @@ export class VoiceSession {
     try {
       await track.applyConstraints(audioConstraints(enabled));
     } catch {
-      // Sem suporte a applyConstraints: captura de novo e troca a track nas conexões sem renegociar.
       const fresh = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(enabled) });
       const [next] = fresh.getAudioTracks();
-      next.enabled = track.enabled; // preserva o estado de mudo
+      next.enabled = track.enabled;
       for (const peer of this.peers.values()) {
         const sender = peer.pc.getSenders().find((s) => s.track === track);
         await sender?.replaceTrack(next);

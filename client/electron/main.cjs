@@ -5,25 +5,33 @@ const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session, shell, systemPreferences } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
+
+// Impede que o Electron congele a transmissão de vídeo/áudio quando a janela não está focada ou está minimizada
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+// Corrige o bug da tela verde (MPO / DXGI Color Space) em placas AMD/NVIDIA ao capturar o monitor
+// MATA O BUG DA TELA VERDE: desativa os overlays de hardware e DirectComposition do vídeo
+app.commandLine.appendSwitch('disable-DirectComposition');
+app.commandLine.appendSwitch('disable-features', 'DirectComposition,UseSkiaRenderer,WebRtcAllowDxgiGmb,MediaFoundationD3D11VideoCapture');
+app.commandLine.appendSwitch('force-color-profile', 'srgb');
+// Ativa cancelamento de eco nativo em nível de processo no Chromium
+app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustment,ChromeWideEchoCancellation');
+
 // `npm run dev` passa --dev (carrega o Vite). Sem a flag (npm run start / app empacotado) carrega o build.
 const isDev = !app.isPackaged && process.argv.includes('--dev');
 const DEV_URL = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
 const APP_ORIGIN = 'app://radio-esgoto';
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 
-// O app empacotado é servido por um esquema próprio (app://radio-esgoto) em vez de file://:
-// assim ele tem uma origem de verdade (não "null"), que o servidor pode autorizar no CORS/WebSocket
-// e que permite cookies de sessão. Precisa ser registrado antes do app ficar pronto.
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
-// Só a nossa própria interface é confiável (compara a origem, não o prefixo do texto).
 function isTrustedUrl(raw) {
   try {
     const url = new URL(raw);
     if (isDev) return url.origin === new URL(DEV_URL).origin;
-    // Verifica o protocolo e o domínio em vez de usar o .origin que falha no Node
     return url.protocol === 'app:' && url.hostname === 'radio-esgoto';
   } catch {
     return false;
@@ -49,10 +57,19 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      backgroundThrottling: false, // Impede travamento da live fora do modo janela
     },
   });
 
   win.once('ready-to-show', () => win.show());
+
+  // Quando o usuário sai da tela cheia pelo ESC nativo ou F11, garante sincronia
+  win.on('leave-full-screen', () => {
+    win.webContents.send('window:fullscreen-changed', false);
+  });
+  win.on('enter-full-screen', () => {
+    win.webContents.send('window:fullscreen-changed', true);
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
@@ -67,9 +84,25 @@ function createWindow() {
   else win.loadURL(`${APP_ORIGIN}/index.html`);
 }
 
+// --- Controle de Tela Cheia via IPC ------------------------------------------
+ipcMain.handle('window:set-fullscreen', (event, flag) => {
+  if (!isTrustedSender(event)) throw new Error('Remetente não autorizado.');
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return false;
+  win.setFullScreen(Boolean(flag));
+  return win.isFullScreen();
+});
+
+ipcMain.handle('window:toggle-fullscreen', (event) => {
+  if (!isTrustedSender(event)) throw new Error('Remetente não autorizado.');
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return false;
+  const next = !win.isFullScreen();
+  win.setFullScreen(next);
+  return next;
+});
+
 // --- Compartilhamento de tela ------------------------------------------------
-// O Electron não tem seletor nativo para getDisplayMedia(): o React pede a lista
-// de fontes por IPC, a pessoa escolhe, e o handler abaixo entrega a fonte escolhida.
 let selectedSourceId = null;
 
 ipcMain.handle('screen:get-sources', async (event) => {
@@ -99,25 +132,25 @@ function configureSession(ses) {
       const source = sources.find((s) => s.id === wanted);
       if (!source) return callback();
 
-      // Áudio do sistema ("loopback") só está disponível no Windows.
-      return callback({ video: source, ...(process.platform === 'win32' ? { audio: 'loopback' } : {}) });
+      // Sem 'audio: loopback' global: evita que o Windows capture a voz dos amigos
+      // que está saindo no Rádio Esgoto e gere eco infinito na sala.
+      return callback({ video: source });
     },
     { useSystemPicker: false },
   );
 
-  // Nega tudo por padrão; libera notificações e microfone (nunca câmera).
+  // Libera notificações, microfone/tela (media) e TELA CHEIA (fullscreen).
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
     if (!isTrustedUrl(details.requestingUrl ?? webContents.getURL())) return callback(false);
-    if (permission === 'notifications') return callback(true);
-    if (permission === 'media') {
-      return callback(true); // Permite microfone e partilha de ecrã
+    if (permission === 'notifications' || permission === 'media' || permission === 'fullscreen') {
+      return callback(true);
     }
     return callback(false);
   });
 
   ses.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
     if (!isTrustedUrl(requestingOrigin)) return false;
-    return permission === 'notifications' || permission === 'media';
+    return permission === 'notifications' || permission === 'media' || permission === 'fullscreen';
   });
 }
 
@@ -133,7 +166,6 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    // Serve client/dist em app://radio-esgoto/..., sem sair da pasta dist (bloqueia ../).
     protocol.handle('app', (request) => {
       const { pathname } = new URL(request.url);
       const relative = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
@@ -146,8 +178,7 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone').catch(() => {});
 
     createWindow();
-    
-    // Inicia a verificação de atualizações em segundo plano
+
     autoUpdater.checkForUpdatesAndNotify();
 
     app.on('activate', () => {

@@ -1,0 +1,76 @@
+/* ==========================================================================================
+   PAINEL DE MEMBROS: cano de cobre, grade redonda e água verde numa poça, presos na base.
+   Estrutura (MembersPanel.jsx):
+     aside.members
+       ├─ .members-list   ← único elemento que rola; termina acima da arte (padding-bottom)
+       └─ .members-base   ← decoração, não interativa
+            ├─ .members-pipe  ← trecho reto do cano (imagem repetida), da base da página até o topo da arte
+            └─ svg.sewer-base ← cotovelo, bocal, grade, jatos, poça e meio-fio (alinhados no mesmo SVG)
+   A altura da arte acompanha a LARGURA do painel (unidade cqw): 320/244 da largura.
+   ========================================================================================== */
+
+aside.members {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  container-type: inline-size;      /* habilita 100cqw = largura do painel */
+  --art-h: calc(100cqw * 320 / 244);
+}
+aside.members::before { content: none; }  /* o cano antigo (::before) foi substituído por .members-pipe */
+
+.members-list {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* esquerda: espaço do cano · baixo: altura da arte + folga, para os últimos nomes não ficarem atrás da grade */
+  padding: 4px 10px calc(var(--art-h) + 36px) 56px;
+  /* quem rola some suavemente ao chegar na arte, em vez de passar por cima do desenho */
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--art-h) - 28px), transparent calc(100% - var(--art-h)));
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--art-h) - 28px), transparent calc(100% - var(--art-h)));
+  /* scrollbar-width: none;  ← descomente para esconder a barra de rolagem */
+}
+
+.members-base { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+
+.members-pipe {
+  position: absolute; left: 0; top: 0; bottom: var(--art-h); width: 45px;
+  /* a imagem termina em anel de latão; ancorada embaixo, a emenda fica escondida pelo anel do SVG */
+  background: url('./assets/art/cano-reto.webp') 0 100% / 45px 146px repeat-y;
+}
+
+.sewer-base {
+  position: absolute; left: 0; bottom: 0; width: 100%; height: var(--art-h);
+  overflow: visible;               /* o anel de junta do topo ultrapassa a caixa do SVG */
+}
+
+/* ---- animações da água (desligadas em "Efeitos visuais: desligados" e em prefers-reduced-motion) ---- */
+.sb-flow { animation: sb-flow 0.9s linear infinite; }
+@keyframes sb-flow { to { stroke-dashoffset: -36; } }
+
+.sb-ripple { transform-box: fill-box; transform-origin: center; animation: sb-ripple 1.8s ease-out infinite; }
+@keyframes sb-ripple { from { transform: scale(0.25); opacity: 0.9; } to { transform: scale(1); opacity: 0; } }
+
+.sb-drop { transform-box: fill-box; transform-origin: center; animation: sb-drop 1.1s ease-in infinite; }
+@keyframes sb-drop {
+  0% { transform: translateY(5px); opacity: 0; } 30% { opacity: 1; }
+  55% { transform: translateY(-5px); opacity: 1; } 100% { transform: translateY(2px); opacity: 0; }
+}
+
+[data-fx='off'] .sb-flow, [data-fx='off'] .sb-ripple, [data-fx='off'] .sb-drop { animation: none; }
+[data-fx='off'] .sb-ripple, [data-fx='off'] .sb-drop { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sb-flow, .sb-ripple, .sb-drop { animation: none; }
+  .sb-ripple, .sb-drop { opacity: 0; }
+}
+
+/* janela baixa: a arte ocuparia o painel inteiro, então some e o cano segue até o fim */
+@media (max-height: 640px) {
+  .sewer-base { display: none; }
+  .members-pipe { bottom: 0; }
+  .members-list { padding-bottom: 12px; -webkit-mask-image: none; mask-image: none; }
+}
