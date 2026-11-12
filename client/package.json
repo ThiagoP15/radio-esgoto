@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
-  "scripts": {
+ "scripts": {
     "dev": "concurrently -k -n vite,electron -c magenta,cyan \"vite\" \"wait-on tcp:localhost:5173 && electron . --dev\"",
     "build": "vite build",
     "start": "vite build && electron .",
-    "dist": "npm run build && electron-builder --win"
+    "dist": "npm run build && electron-builder --win",
+    "release": "npm run build && node -e \"const {execSync}=require('child_process');const v='v'+require('./package.json').version;try{execSync('git tag '+v)}catch{};execSync('git push origin '+v,{stdio:'inherit'})\" && electron-builder --win -p always"
   },
   "build": {
     "appId": "com.radioesgoto.app",
