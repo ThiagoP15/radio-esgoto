@@ -1,76 +1,30 @@
-/* ==========================================================================================
-   PAINEL DE MEMBROS: cano de cobre, grade redonda e água verde numa poça, presos na base.
-   Estrutura (MembersPanel.jsx):
-     aside.members
-       ├─ .members-list   ← único elemento que rola; termina acima da arte (padding-bottom)
-       └─ .members-base   ← decoração, não interativa
-            ├─ .members-pipe  ← trecho reto do cano (imagem repetida), da base da página até o topo da arte
-            └─ svg.sewer-base ← cotovelo, bocal, grade, jatos, poça e meio-fio (alinhados no mesmo SVG)
-   A altura da arte acompanha a LARGURA do painel (unidade cqw): 320/244 da largura.
-   ========================================================================================== */
+﻿/* Painel React independente. Sem dependências do shell da prévia. */
+.rr-members{position:relative;display:flex;flex-direction:column;overflow:hidden;min-height:0;height:100%;width:100%;color:#e4ddc7;font:16px/1.45 'Segoe UI',Arial,sans-serif;background:#172016 url('./assets/tijolos.png') 0 0/400px 400px;image-rendering:pixelated;border-left:4px ridge #71532b;box-sizing:border-box}
+.rr-members *{box-sizing:border-box}
+.rr-members-pipe{position:absolute;top:0;left:9px;bottom:310px;width:40px;background:url('./assets/cano-reto.webp') center bottom/40px 130px repeat-y;filter:saturate(.72) brightness(.85)}
+.rr-members-list{position:relative;z-index:1;flex:1;min-height:0;overflow:auto;padding:17px 13px 12px 56px;background:#06100820;scrollbar-width:thin;scrollbar-color:#626443 #10180f}
+.rr-members h3{font-family:Bahnschrift,'Arial Narrow',sans-serif;font-stretch:condensed;font-size:15px;line-height:1.3;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#e1af55;text-shadow:1px 2px #030702;margin:0 0 10px}
+.rr-members section+section{margin-top:24px}.rr-members ul{list-style:none;padding:0;margin:0}.rr-members li{display:flex;gap:11px;align-items:center;min-height:45px;font-weight:500;text-shadow:1px 2px #040805}
+.rr-members .is-offline{color:#c8c4b0}.rr-member-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rr-initial-avatar{position:relative;display:grid;place-items:center;flex-shrink:0;width:33px;height:35px;border:2px solid #b18b40;background:#415344;color:#efd48f;font-weight:600;clip-path:polygon(22% 0,78% 0,100% 22%,100% 78%,78% 100%,22% 100%,0 78%,0 22%);box-shadow:inset 0 0 0 2px #131a12}
+.rr-initial-avatar i{position:absolute;bottom:0;right:0;width:9px;height:9px;border-radius:50%;background:#a6c556;border:2px solid #111b10}.rr-initial-avatar [data-status=offline]{background:#888d73}.rr-initial-avatar [data-status=away]{background:#d3ad56}.rr-initial-avatar [data-status=dnd]{background:#ca7b63}
+.rr-status-text{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.rr-members .sewer-scene{position:relative;flex-shrink:0;height:310px;pointer-events:none}
+.rr-members .drain-art{position:absolute;inset:0;background:url('./assets/drenagem.png') center/100% 100% no-repeat;image-rendering:pixelated}
+.rr-members .sewer{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.rr-members .water-flow{animation:rr-flow .95s linear infinite}.rr-members .falling-drop{animation:rr-drop 1.2s steps(18,end) infinite}.rr-members .ripple{transform-box:fill-box;transform-origin:center;animation:rr-ripple 1.8s linear infinite}
+.rr-no-members{color:#c8c4b0;font-size:14px}
+@keyframes rr-flow{to{stroke-dashoffset:-42}}@keyframes rr-drop{0%{transform:translateY(0);opacity:0}10%,85%{opacity:.7}100%{transform:translateY(110px);opacity:0}}@keyframes rr-ripple{from{transform:scale(.2);opacity:.65}to{transform:scale(1);opacity:0}}
+.rr-members[data-fx=off] .water-flow,.rr-members[data-fx=off] .falling-drop,.rr-members[data-fx=off] .ripple{animation:none}.rr-members[data-fx=off] .falling-drop,.rr-members[data-fx=off] .ripple{opacity:0}
+@media(prefers-reduced-motion:reduce){.rr-members .water-flow,.rr-members .falling-drop,.rr-members .ripple{animation:none!important}.rr-members .falling-drop,.rr-members .ripple{opacity:0}}
+@media(max-height:680px){.rr-members .sewer-scene{height:215px}.rr-members-pipe{bottom:215px}}
 
-aside.members {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 0;
-  container-type: inline-size;      /* habilita 100cqw = largura do painel */
-  --art-h: calc(100cqw * 320 / 244);
-}
-aside.members::before { content: none; }  /* o cano antigo (::before) foi substituído por .members-pipe */
 
-.members-list {
-  position: relative;
-  z-index: 1;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  /* esquerda: espaço do cano · baixo: altura da arte + folga, para os últimos nomes não ficarem atrás da grade */
-  padding: 4px 10px calc(var(--art-h) + 36px) 56px;
-  /* quem rola some suavemente ao chegar na arte, em vez de passar por cima do desenho */
-  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--art-h) - 28px), transparent calc(100% - var(--art-h)));
-  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - var(--art-h) - 28px), transparent calc(100% - var(--art-h)));
-  /* scrollbar-width: none;  ← descomente para esconder a barra de rolagem */
-}
+/* O trecho reto e o cotovelo usam a mesma arte e a mesma escala. */
+.members,.rr-members{container-type:inline-size;--drain-h:310px}
+.pipe,.rr-members-pipe{left:0;width:20cqw;bottom:var(--drain-h);background:none!important;filter:none;display:flex;flex-direction:column;overflow:hidden}
+.pipe-segment{display:block;flex:0 0 110px;width:100%;background:url('./assets/drenagem.png') 0 0 / 100cqw var(--drain-h) no-repeat;image-rendering:pixelated}
+.sewer-scene{height:var(--drain-h)}
+@media(min-width:1600px){.members{--drain-h:345px}}
+@media(max-height:680px){.members,.rr-members{--drain-h:215px}.pipe-segment{flex-basis:75px}}
 
-.members-base { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-
-.members-pipe {
-  position: absolute; left: 0; top: 0; bottom: var(--art-h); width: 45px;
-  /* a imagem termina em anel de latão; ancorada embaixo, a emenda fica escondida pelo anel do SVG */
-  background: url('./assets/art/cano-reto.webp') 0 100% / 45px 146px repeat-y;
-}
-
-.sewer-base {
-  position: absolute; left: 0; bottom: 0; width: 100%; height: var(--art-h);
-  overflow: visible;               /* o anel de junta do topo ultrapassa a caixa do SVG */
-}
-
-/* ---- animações da água (desligadas em "Efeitos visuais: desligados" e em prefers-reduced-motion) ---- */
-.sb-flow { animation: sb-flow 0.9s linear infinite; }
-@keyframes sb-flow { to { stroke-dashoffset: -36; } }
-
-.sb-ripple { transform-box: fill-box; transform-origin: center; animation: sb-ripple 1.8s ease-out infinite; }
-@keyframes sb-ripple { from { transform: scale(0.25); opacity: 0.9; } to { transform: scale(1); opacity: 0; } }
-
-.sb-drop { transform-box: fill-box; transform-origin: center; animation: sb-drop 1.1s ease-in infinite; }
-@keyframes sb-drop {
-  0% { transform: translateY(5px); opacity: 0; } 30% { opacity: 1; }
-  55% { transform: translateY(-5px); opacity: 1; } 100% { transform: translateY(2px); opacity: 0; }
-}
-
-[data-fx='off'] .sb-flow, [data-fx='off'] .sb-ripple, [data-fx='off'] .sb-drop { animation: none; }
-[data-fx='off'] .sb-ripple, [data-fx='off'] .sb-drop { opacity: 0; }
-
-@media (prefers-reduced-motion: reduce) {
-  .sb-flow, .sb-ripple, .sb-drop { animation: none; }
-  .sb-ripple, .sb-drop { opacity: 0; }
-}
-
-/* janela baixa: a arte ocuparia o painel inteiro, então some e o cano segue até o fim */
-@media (max-height: 640px) {
-  .sewer-base { display: none; }
-  .members-pipe { bottom: 0; }
-  .members-list { padding-bottom: 12px; -webkit-mask-image: none; mask-image: none; }
-}

@@ -6,6 +6,7 @@ import AvatarWithStatus from './AvatarWithStatus.jsx';
 import Icon from './Icon.jsx';
 import StatusMenu from './StatusMenu.jsx';
 import { STATUS_LABEL } from './StatusBadge.jsx';
+import AmbientRats from './AmbientRats.jsx';
 
 const GearIcon = () => (
   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
@@ -91,7 +92,9 @@ export default function Sidebar({
           </section>
         ))}
       </div>
-
+<div className="wall-life">
+  <AmbientRats side="left" />
+</div>
       <div className="mist" aria-hidden="true" />
 
       {voiceChannel && (

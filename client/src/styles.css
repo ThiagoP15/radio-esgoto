@@ -647,3 +647,5 @@ select { background: var(--bg-0); }
   font-size: 14px !important;
   border-top: 1px solid var(--brass-dim);
 }
+aside.members.rr-members { padding: 0 !important; }
+aside.members.rr-members::before { display: none !important; content: none !important; }

@@ -1,0 +1,35 @@
+﻿/* Sprites: 8 poses reais; caminhar, observar, levantar e olhar ao redor. */
+.rat-habitat{position:relative;container-type:inline-size;pointer-events:none;isolation:isolate;overflow:hidden}
+.wall-life{flex:1 1 200px;min-height:110px;max-height:280px;margin-top:8px;position:relative;overflow:hidden;pointer-events:none}
+.wall-life:before{content:'';position:absolute;inset:0;background:url('./assets/abrigo-esquerdo.png') center bottom/contain no-repeat;image-rendering:pixelated;opacity:.85}
+.wall-life .rat-habitat{position:absolute;inset:0}
+.ambient-rat{--cycle:34s;--offset:-14s;position:absolute;bottom:12px;left:0;width:70px;height:64px;animation:rat-travel var(--cycle) linear var(--offset) infinite;will-change:transform}
+.rat-facing{position:absolute;inset:0;animation:rat-turn var(--cycle) steps(1,end) var(--offset) infinite;transform-origin:center}
+.rat-silhouette{position:absolute;inset:0;filter:drop-shadow(1px 2px 0 #050b08)}
+.rat-frame{position:absolute;inset:0;width:70px;height:64px;background-image:url('./assets/ratos-sprites.png');background-size:560px 186.484375px;background-position-y:-56px;background-repeat:no-repeat;image-rendering:pixelated}
+.rat-walk{background-position-x:0;animation:rat-steps .48s steps(4,end) infinite,rat-walk-visible var(--cycle) steps(1,end) var(--offset) infinite}
+.rat-watch{background-position-x:-280px;animation:rat-watch-visible var(--cycle) steps(1,end) var(--offset) infinite}
+.rat-rise{background-position-x:-350px;animation:rat-rise-visible var(--cycle) steps(1,end) var(--offset) infinite}
+.rat-upright{background-position-x:-420px;animation:rat-head 1.8s steps(2,end) infinite,rat-upright-visible var(--cycle) steps(1,end) var(--offset) infinite}
+.ambient-rat.is-small{--cycle:41s;--offset:-4s;bottom:7px;opacity:.85}
+.is-small .rat-silhouette{transform:scale(.72);transform-origin:center bottom;filter:brightness(.85) drop-shadow(1px 2px 0 #050b08)}
+.rat-habitat--right{position:absolute;left:0;right:0;height:80px;bottom:14px;z-index:2}
+.rat-habitat--right .ambient-rat{--cycle:38s;--offset:-17s}
+.rat-habitat--right .is-small{--cycle:47s;--offset:-7s}
+@keyframes rat-travel{0%,3%{transform:translateX(-72px)}32%,65%{transform:translateX(calc(100cqw - 82px))}97%,100%{transform:translateX(-72px)}}
+@keyframes rat-turn{0%,65%{transform:scaleX(1)}66%,100%{transform:scaleX(-1)}}
+@keyframes rat-steps{from{background-position-x:0}to{background-position-x:-280px}}
+@keyframes rat-head{from{background-position-x:-420px}to{background-position-x:-560px}}
+@keyframes rat-walk-visible{0%{opacity:1}32%{opacity:0}66%,100%{opacity:1}}
+@keyframes rat-watch-visible{0%{opacity:0}32%{opacity:1}40%{opacity:0}61%{opacity:1}66%,100%{opacity:0}}
+@keyframes rat-rise-visible{0%{opacity:0}40%{opacity:1}45%{opacity:0}57%{opacity:1}61%,100%{opacity:0}}
+@keyframes rat-upright-visible{0%{opacity:0}45%{opacity:1}57%,100%{opacity:0}}
+[data-fx=off] .ambient-rat,[data-fx=off] .rat-facing,[data-fx=off] .rat-frame{animation:none!important;will-change:auto}
+[data-fx=off] .ambient-rat{transform:translateX(55px)}
+[data-fx=off] .ambient-rat.is-small{display:none}
+[data-fx=off] .rat-watch,[data-fx=off] .rat-rise,[data-fx=off] .rat-upright{opacity:0}
+[data-fx=off] .rat-walk{opacity:1}
+@media(prefers-reduced-motion:reduce){.ambient-rat,.rat-facing,.rat-frame{animation:none!important;will-change:auto}.ambient-rat{transform:translateX(55px)}.ambient-rat.is-small{display:none}.rat-watch,.rat-rise,.rat-upright{opacity:0}.rat-walk{opacity:1}}
+@media(max-height:760px){.wall-life{min-height:75px;max-height:140px}.wall-life:before{background-position:right bottom;background-size:auto 145px}}
+@media(max-height:660px){.wall-life{display:none}}
+

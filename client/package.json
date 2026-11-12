@@ -1,6 +1,6 @@
 {
   "name": "radio-esgoto-client",
-  "version": "1.0.5",
+  "version": "1.0.7",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -11,36 +11,56 @@
     "dist": "npm run build && electron-builder --win"
   },
   "build": {
+    "appId": "com.radioesgoto.app",
+    "compression": "maximum",
+    "asar": true,
+    "electronLanguages": [
+      "pt-BR",
+      "en-US"
+    ],
     "publish": [
       {
         "provider": "github",
         "owner": "ThiagoP15",
-        "repo": "radio-esgoto"
+        "repo": "radio-esgoto",
+        "releaseType": "release"
       }
     ],
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
-    ]
+      "package.json",
+      "!**/*.map",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme,*.ts}"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   },
   "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "devDependencies": {
     "@fontsource/bebas-neue": "^5.1.0",
     "@fontsource/inter": "^5.1.0",
     "@fontsource/special-elite": "^5.1.0",
-    "electron-updater": "^6.8.11",
-    "emoji-picker-react": "^4.12.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "socket.io-client": "^4.8.1"
-  },
-  "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.0",
     "electron": "^33.2.0",
     "electron-builder": "^26.18.0",
+    "emoji-picker-react": "^4.12.0",
     "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io-client": "^4.8.1",
     "tailwindcss": "^3.4.17",
     "vite": "^5.4.11",
     "wait-on": "^8.0.1"
