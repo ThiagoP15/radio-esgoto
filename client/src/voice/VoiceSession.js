@@ -10,6 +10,62 @@ const audioConstraints = (enabled) => ({
   autoGainControl: enabled,
 });
 
+export const SCREEN_QUALITY_PRESETS = {
+  '720p60': {
+    id: '720p60',
+    label: '720p • 60 FPS (Leve)',
+    width: 1280,
+    height: 720,
+    fps: 60,
+    maxBitrate: 3_500_000, // 3.5 Mbps
+    minBitrateKbps: 1200,
+    startBitrateKbps: 2500,
+    maxBitrateKbps: 3500,
+  },
+  '1080p60': {
+    id: '1080p60',
+    label: '1080p • 60 FPS (Alta)',
+    width: 1920,
+    height: 1080,
+    fps: 60,
+    maxBitrate: 6_000_000, // 6 Mbps
+    minBitrateKbps: 2000,
+    startBitrateKbps: 4000,
+    maxBitrateKbps: 6000,
+  },
+  '1080p120': {
+    id: '1080p120',
+    label: '1080p • 120 FPS (Ultra)',
+    width: 1920,
+    height: 1080,
+    fps: 120,
+    maxBitrate: 8_500_000, // 8.5 Mbps
+    minBitrateKbps: 2500,
+    startBitrateKbps: 5500,
+    maxBitrateKbps: 8500,
+  },
+};
+
+const SCREEN_AUDIO_MAX_BITRATE = 256_000; // 256 kbps estéreo
+
+function enhanceSdpQuality(sdp, preset) {
+  if (!sdp) return sdp;
+  const p = preset || SCREEN_QUALITY_PRESETS['1080p120'];
+  let out = sdp;
+
+  out = out.replace(
+    /(a=fmtp:\d+ (?:profile-level-id|level-asymmetry-allowed|apt)=[^\r\n]+)/g,
+    `$1;x-google-min-bitrate=${p.minBitrateKbps};x-google-start-bitrate=${p.startBitrateKbps};x-google-max-bitrate=${p.maxBitrateKbps}`,
+  );
+
+  out = out.replace(
+    /a=fmtp:(\d+) minptime=10;useinbandfec=1/g,
+    'a=fmtp:$1 minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=256000',
+  );
+
+  return out;
+}
+
 export class VoiceSession {
   constructor({ socket, channelId, iceServers = [], onUpdate }) {
     this.socket = socket;
@@ -22,6 +78,7 @@ export class VoiceSession {
     this.screenStream = null;
     this.shareAudio = null;
     this.noiseSuppression = true;
+    this.screenQuality = '1080p120';
     this.stopped = false;
 
     this.listeners = {
@@ -32,6 +89,35 @@ export class VoiceSession {
       answer: (payload) => this.onDescription(payload),
       'ice-candidate': (payload) => this.onCandidate(payload),
     };
+  }
+
+  getPreset() {
+    return SCREEN_QUALITY_PRESETS[this.screenQuality] || SCREEN_QUALITY_PRESETS['1080p120'];
+  }
+
+  async setScreenQuality(qualityId) {
+    if (!SCREEN_QUALITY_PRESETS[qualityId]) return;
+    this.screenQuality = qualityId;
+    const preset = this.getPreset();
+
+    if (this.screenStream) {
+      const [videoTrack] = this.screenStream.getVideoTracks();
+      if (videoTrack) {
+        try {
+          await videoTrack.applyConstraints({
+            width: { ideal: preset.width, max: preset.width },
+            height: { ideal: preset.height, max: preset.height },
+            frameRate: { ideal: preset.fps, max: preset.fps },
+          });
+        } catch {
+          // Alguns drivers exigem reiniciar o compartilhamento para mudar resolução, mas o bitrate/fps no sender é atualizado abaixo
+        }
+      }
+      for (const peer of this.peers.values()) {
+        this.applySenderBitrate(peer);
+      }
+    }
+    this.emitUpdate();
   }
 
   async start() {
@@ -86,7 +172,13 @@ export class VoiceSession {
       try {
         peer.makingOffer = true;
         await pc.setLocalDescription();
-        this.socket.emit('offer', { to: id, data: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+        this.socket.emit('offer', {
+          to: id,
+          data: {
+            type: pc.localDescription.type,
+            sdp: enhanceSdpQuality(pc.localDescription.sdp, this.getPreset()),
+          },
+        });
       } catch (err) {
         console.error('[voz] falha ao negociar', err);
       } finally {
@@ -144,10 +236,19 @@ export class VoiceSession {
         await pc.setRemoteDescription(description);
         await this.flushCandidates(peer);
         await pc.setLocalDescription();
-        this.socket.emit('answer', { to: from, data: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+        this.socket.emit('answer', {
+          to: from,
+          data: {
+            type: pc.localDescription.type,
+            sdp: enhanceSdpQuality(pc.localDescription.sdp, this.getPreset()),
+          },
+        });
       } else {
         await pc.setRemoteDescription(description);
         await this.flushCandidates(peer);
+        if (peer.screenSenders.length > 0) {
+          this.applySenderBitrate(peer);
+        }
       }
     } catch (err) {
       console.error('[voz] falha ao aplicar descrição remota', err);
@@ -178,23 +279,30 @@ export class VoiceSession {
     }
   }
 
-  // --- Compartilhamento de tela (Sem Eco) ---------------------------------------
-  /**
-   * @param {string} [sourceId] id da fonte escolhida no seletor (desktopCapturer), ex. "window:123:0" / "screen:0:0"
-   */
-  async startScreenShare(sourceId = null) {
+  // --- Compartilhamento de tela -------------------------------------------------
+  async startScreenShare(sourceId = null, qualityId = null) {
     if (this.screenStream || this.stopped) return;
+    if (qualityId && SCREEN_QUALITY_PRESETS[qualityId]) {
+      this.screenQuality = qualityId;
+    }
+    const preset = this.getPreset();
 
-    // O vídeo vem do getDisplayMedia; o áudio NUNCA vem dele (audio:false), pois o 'loopback'
-    // do Chromium é do sistema inteiro e traria a voz da call de volta (eco).
     const display = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: 30, max: 60 } },
+      video: {
+        width: { ideal: preset.width, max: preset.width },
+        height: { ideal: preset.height, max: preset.height },
+        frameRate: { ideal: preset.fps, max: preset.fps },
+      },
       audio: false,
     });
     const [video] = display.getVideoTracks();
+
+    if ('contentHint' in video) {
+      video.contentHint = 'motion';
+    }
+
     const stream = new MediaStream([video]);
 
-    // Áudio limpo, filtrado por processo no main (janela -> só o app; tela -> sistema menos o Rádio Esgoto).
     const audioTrack = await this.startShareAudio(sourceId).catch((err) => {
       console.warn('[voz] áudio do compartilhamento indisponível', err);
       return null;
@@ -203,7 +311,6 @@ export class VoiceSession {
 
     this.screenStream = stream;
 
-    // O streamId é emitido depois de montar o stream final (vídeo + áudio): o id é o mesmo no receptor.
     this.socket.emit('voice:screen', { sharing: true, streamId: stream.id });
     for (const peer of this.peers.values()) this.addScreenTracks(peer);
 
@@ -233,7 +340,11 @@ export class VoiceSession {
 
     console.info('[voz] áudio do compartilhamento ativo:', res);
     this.shareAudio = { ctx, node, off, native };
-    return dest.stream.getAudioTracks()[0];
+    const [track] = dest.stream.getAudioTracks();
+    if (track && 'contentHint' in track) {
+      track.contentHint = 'music';
+    }
+    return track;
   }
 
   stopShareAudio() {
@@ -248,6 +359,36 @@ export class VoiceSession {
 
   addScreenTracks(peer) {
     peer.screenSenders = this.screenStream.getTracks().map((track) => peer.pc.addTrack(track, this.screenStream));
+    this.applySenderBitrate(peer);
+  }
+
+  applySenderBitrate(peer) {
+    const preset = this.getPreset();
+    for (const sender of peer.screenSenders) {
+      if (!sender.track) continue;
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) {
+          params.encodings = [{}];
+        }
+
+        if (sender.track.kind === 'video') {
+          params.encodings[0].maxBitrate = preset.maxBitrate;
+          params.encodings[0].maxFramerate = preset.fps;
+          params.encodings[0].priority = 'high';
+          params.encodings[0].networkPriority = 'high';
+          params.degradationPreference = 'maintain-framerate';
+        } else if (sender.track.kind === 'audio') {
+          params.encodings[0].maxBitrate = SCREEN_AUDIO_MAX_BITRATE;
+          params.encodings[0].priority = 'high';
+          params.encodings[0].networkPriority = 'high';
+        }
+
+        sender.setParameters(params).catch(() => {});
+      } catch {
+        // Ignora se ainda não negociado
+      }
+    }
   }
 
   stopScreenShare() {
@@ -331,6 +472,7 @@ export class VoiceSession {
       sharing: Boolean(this.screenStream),
       screenStream: this.screenStream,
       noiseSuppression: this.noiseSuppression,
+      screenQuality: this.screenQuality,
       peers: [...this.peers.values()].map((p) => ({
         id: p.id,
         user: p.user,
