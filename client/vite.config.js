@@ -6,13 +6,14 @@ export default defineConfig(({ mode }) => {
   const serverUrl = (env.VITE_SERVER_URL || 'https://radio-esgoto.duckdns.org').replace(/\/$/, '');
   const wsUrl = serverUrl.replace(/^http/, 'ws');
 
-  // CSP só no build: em dev o plugin do React injeta um script inline.
+  // CSP só no build: inclui data: e blob: em script-src e worker-src para liberar o AudioWorklet
   const csp = [
     "default-src 'self'",
-    "script-src 'self'",
+    "script-src 'self' data: blob:",
+    "worker-src 'self' data: blob:",
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: ${serverUrl}`,
-    "media-src 'self' blob:",
+    `img-src 'self' data: blob: ${serverUrl}`,
+    "media-src 'self' data: blob:",
     "font-src 'self' data:",
     `connect-src 'self' ${serverUrl} ${wsUrl}`,
     "object-src 'none'",
@@ -20,7 +21,7 @@ export default defineConfig(({ mode }) => {
   ].join('; ');
 
   return {
-    base: './',
+    base: '/',
     plugins: [
       react(),
       {
@@ -35,6 +36,10 @@ export default defineConfig(({ mode }) => {
       },
     ],
     server: { port: 5173, strictPort: true },
-    build: { outDir: 'dist', emptyOutDir: true },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true,
+      assetsInlineLimit: 0, // Mantém o screen-audio-worklet.js como arquivo separado em vez de Base64
+    },
   };
 });
