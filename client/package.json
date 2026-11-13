@@ -1,6 +1,6 @@
 {
   "name": "radio-esgoto-client",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -32,13 +32,14 @@
       }
     ],
     "files": [
-  "dist/**/*",
-  "electron/**/*",
-  "native/proc-loopback/build/Release/proc_loopback.node",
-  "package.json",
-  "!**/*.map",
-  "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme,*.ts}"
-],
+      "dist/**/*",
+      "electron/**/*",
+      "native/proc-loopback/build/Release/proc_loopback.node",
+      "package.json",
+      "!**/*.map",
+      "!**/*.zip",
+      "!native/proc-loopback/node_modules/**/*"
+    ],
     "win": {
       "target": [
         {
