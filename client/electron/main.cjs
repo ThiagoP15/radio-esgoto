@@ -2,9 +2,21 @@
 
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session, shell, systemPreferences } = require('electron');
+const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, net, protocol, session, shell, systemPreferences } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
+// Captura de áudio por processo (WASAPI Process Loopback). Só Windows 10 build 20348+ / 11.
+let procAudio = null;
+try {
+  if (process.platform === 'win32') {
+    const addonPath = path
+      .join(__dirname, '..', 'native', 'proc-loopback', 'build', 'Release', 'proc_loopback.node')
+      .replace('app.asar', 'app.asar.unpacked');
+    procAudio = require(addonPath);
+  }
+} catch (err) {
+  console.warn('[áudio] módulo nativo indisponível:', err.message);
+}
 
 // Impede que o Electron congele a transmissão de vídeo/áudio quando a janela não está focada ou está minimizada
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -15,8 +27,9 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-DirectComposition');
 app.commandLine.appendSwitch('disable-features', 'DirectComposition,UseSkiaRenderer,WebRtcAllowDxgiGmb,MediaFoundationD3D11VideoCapture');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
-// Ativa cancelamento de eco nativo em nível de processo no Chromium
+// Ativa cancelamento de eco nativo em nível de processo no Chromium e libera autoplay de áudio
 app.commandLine.appendSwitch('enable-features', 'WebRtcAllowInputVolumeAdjustment,ChromeWideEchoCancellation');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // `npm run dev` passa --dev (carrega o Vite). Sem a flag (npm run start / app empacotado) carrega o build.
 const isDev = !app.isPackaged && process.argv.includes('--dev');
@@ -58,10 +71,21 @@ function createWindow() {
       sandbox: true,
       webSecurity: true,
       backgroundThrottling: false, // Impede travamento da live fora do modo janela
+      autoplayPolicy: 'no-user-gesture-required', // o som das transmissões remotas toca sem exigir clique
     },
   });
 
   win.once('ready-to-show', () => win.show());
+
+  // DevTools: automático no `npm run dev`; no app empacotado só com RADIO_DEVTOOLS=1.
+  // Atalhos (nesses casos): F12 ou Ctrl+Shift+I.
+  if (isDev || process.env.RADIO_DEVTOOLS === '1') {
+    win.webContents.once('did-finish-load', () => win.webContents.openDevTools({ mode: 'detach' }));
+    win.webContents.on('before-input-event', (_event, input) => {
+      const isToggle = input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i');
+      if (input.type === 'keyDown' && isToggle) win.webContents.toggleDevTools();
+    });
+  }
 
   // Quando o usuário sai da tela cheia pelo ESC nativo ou F11, garante sincronia
   win.on('leave-full-screen', () => {
@@ -120,6 +144,46 @@ ipcMain.handle('screen:select-source', (event, id) => {
   selectedSourceId = typeof id === 'string' ? id : null;
 });
 
+// --- Áudio do compartilhamento, sem eco ---------------------------------------
+// Janela -> captura SÓ o áudio daquele app (INCLUDE). Tela -> todo o áudio do sistema
+// MENOS o do próprio Rádio Esgoto (EXCLUDE process.pid), ou seja, sem a voz da chamada.
+ipcMain.handle('screen:audio-start', (event, sourceId) => {
+  if (!isTrustedSender(event)) throw new Error('Remetente não autorizado.');
+  if (!procAudio?.isSupported()) return { ok: false, reason: 'unsupported' };
+
+  let pid = 0;
+  let include = false;
+  const win = /^window:(\d+):/.exec(typeof sourceId === 'string' ? sourceId : '');
+  if (win) {
+    pid = procAudio.getWindowPid(Number(win[1]));
+    include = true;
+    if (!pid || pid === process.pid) return { ok: false, reason: 'no-target' };
+  } else if (typeof sourceId === 'string' && sourceId.startsWith('screen:')) {
+    pid = process.pid;
+    include = false;
+  } else {
+    return { ok: false, reason: 'bad-source' };
+  }
+
+  console.log(`[áudio] iniciando captura: modo=${include ? 'INCLUDE (só o app)' : 'EXCLUDE (sistema menos o Rádio Esgoto)'} pid=${pid} fonte=${sourceId}`);
+  const sender = event.sender;
+  const started = procAudio.start(pid, include, (err, buf) => {
+    if (err) {
+      console.warn('[áudio] captura falhou:', err);
+      return;
+    }
+    if (!sender.isDestroyed()) sender.send('screen:audio-chunk', buf);
+  });
+  return { ok: started, mode: include ? 'app' : 'system-minus-app', pid };
+});
+
+ipcMain.handle('screen:audio-stop', (event) => {
+  if (!isTrustedSender(event)) throw new Error('Remetente não autorizado.');
+  procAudio?.stop();
+});
+
+app.on('before-quit', () => procAudio?.stop());
+
 function configureSession(ses) {
   ses.setDisplayMediaRequestHandler(
     async (request, callback) => {
@@ -132,8 +196,8 @@ function configureSession(ses) {
       const source = sources.find((s) => s.id === wanted);
       if (!source) return callback();
 
-      // Sem 'audio: loopback' global: evita que o Windows capture a voz dos amigos
-      // que está saindo no Rádio Esgoto e gere eco infinito na sala.
+      // O áudio NÃO vem do getDisplayMedia ('loopback' captura o sistema inteiro, voz da call incluída).
+      // Ele vem do módulo nativo (screen:audio-start), que filtra por processo.
       return callback({ video: source });
     },
     { useSystemPicker: false },
@@ -179,7 +243,25 @@ if (!app.requestSingleInstanceLock()) {
 
     createWindow();
 
-    autoUpdater.checkForUpdatesAndNotify();
+    if (app.isPackaged) {
+      autoUpdater.autoDownload = true;
+      autoUpdater.autoInstallOnAppQuit = true;
+      autoUpdater.on('update-downloaded', (info) => {
+        dialog
+          .showMessageBox({
+            type: 'info',
+            title: 'Atualização do Esgoto Pronta',
+            message: `A versão ${info.version} foi baixada. Reiniciar agora para aplicar?`,
+            buttons: ['Reiniciar e Atualizar', 'Depois'],
+            defaultId: 0,
+          })
+          .then(({ response }) => {
+            if (response === 0) autoUpdater.quitAndInstall(false, true);
+          });
+      });
+      autoUpdater.checkForUpdates();
+      setInterval(() => autoUpdater.checkForUpdates(), 10 * 60 * 1000);
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

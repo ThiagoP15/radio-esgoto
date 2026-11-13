@@ -7,17 +7,48 @@ function VideoTile({ tile }) {
   // Se for a sua própria tela (local), começa com o preview pausado para não criar espelho infinito nem bugar o driver
   const [showLocalPreview, setShowLocalPreview] = useState(false);
 
+  // Volume do som do compartilhamento (só tiles remotos; o local fica sempre mudo).
+  const [volume, setVolume] = useState(1);
+  const [hasAudio, setHasAudio] = useState(
+    () => !tile.local && (tile.stream?.getAudioTracks().length ?? 0) > 0,
+  );
+
   const shouldRenderVideo = !tile.local || showLocalPreview;
+
+  useEffect(() => {
+    const stream = tile.stream;
+    if (!stream || tile.local) {
+      setHasAudio(false);
+      return;
+    }
+
+    const checkAudio = () => setHasAudio(stream.getAudioTracks().length > 0);
+    checkAudio();
+
+    stream.addEventListener('addtrack', checkAudio);
+    stream.addEventListener('removetrack', checkAudio);
+    return () => {
+      stream.removeEventListener('addtrack', checkAudio);
+      stream.removeEventListener('removetrack', checkAudio);
+    };
+  }, [tile.stream, tile.local]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (video && shouldRenderVideo) {
       video.srcObject = tile.stream;
+      video.volume = volume;
     }
     return () => {
       if (video) video.srcObject = null;
     };
   }, [tile.stream, shouldRenderVideo]);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
+    }
+  }, [volume, shouldRenderVideo]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -95,7 +126,7 @@ function VideoTile({ tile }) {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-             gap: '10px',
+            gap: '10px',
             height: '180px',
             background: '#0b0d0c',
             color: 'var(--text-dim)',
@@ -124,6 +155,19 @@ function VideoTile({ tile }) {
             >
               Ocultar prévia
             </button>
+          )}
+          {hasAudio && shouldRenderVideo && (
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={(e) => setVolume(parseFloat(e.target.value))}
+              style={{ width: '80px', cursor: 'pointer', accentColor: 'var(--brass)' }}
+              title={`Volume da transmissão: ${Math.round(volume * 100)}%`}
+              aria-label="Volume da transmissão"
+            />
           )}
           {shouldRenderVideo && (
             <button type="button" className="link-button" onClick={toggleFullscreen}>

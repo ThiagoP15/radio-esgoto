@@ -14,4 +14,13 @@ contextBridge.exposeInMainWorld('radioEsgoto', {
     ipcRenderer.on('window:fullscreen-changed', listener);
     return () => ipcRenderer.removeListener('window:fullscreen-changed', listener);
   },
+  screenAudio: {
+    start: (sourceId) => ipcRenderer.invoke('screen:audio-start', sourceId),
+    stop: () => ipcRenderer.invoke('screen:audio-stop'),
+    onChunk: (callback) => {
+      const listener = (_event, buf) => callback(buf);
+      ipcRenderer.on('screen:audio-chunk', listener);
+      return () => ipcRenderer.removeListener('screen:audio-chunk', listener);
+    },
+  },
 });

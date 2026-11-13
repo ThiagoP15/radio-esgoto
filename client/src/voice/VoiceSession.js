@@ -2,6 +2,8 @@
  * Sessão de voz em malha P2P (mesh): uma RTCPeerConnection por pessoa na sala.
  * O Socket.io só faz a sinalização (offer / answer / ice-candidate), sempre dentro da sala.
  */
+import screenAudioWorkletUrl from './screen-audio-worklet.js?url';
+
 const audioConstraints = (enabled) => ({
   noiseSuppression: enabled,
   echoCancellation: enabled,
@@ -18,6 +20,7 @@ export class VoiceSession {
     this.peers = new Map(); // socketId -> estado do peer
     this.localStream = null;
     this.screenStream = null;
+    this.shareAudio = null;
     this.noiseSuppression = true;
     this.stopped = false;
 
@@ -176,25 +179,71 @@ export class VoiceSession {
   }
 
   // --- Compartilhamento de tela (Sem Eco) ---------------------------------------
-  async startScreenShare() {
+  /**
+   * @param {string} [sourceId] id da fonte escolhida no seletor (desktopCapturer), ex. "window:123:0" / "screen:0:0"
+   */
+  async startScreenShare(sourceId = null) {
     if (this.screenStream || this.stopped) return;
 
-    // Captura apenas vídeo (audio: false) ou exclui áudio do sistema para impedir
-    // que a saída de som do Rádio Esgoto volte para a chamada gerando microfonia/eco.
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        frameRate: { ideal: 30, max: 60 },
-      },
+    // O vídeo vem do getDisplayMedia; o áudio NUNCA vem dele (audio:false), pois o 'loopback'
+    // do Chromium é do sistema inteiro e traria a voz da call de volta (eco).
+    const display = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 30, max: 60 } },
       audio: false,
     });
+    const [video] = display.getVideoTracks();
+    const stream = new MediaStream([video]);
+
+    // Áudio limpo, filtrado por processo no main (janela -> só o app; tela -> sistema menos o Rádio Esgoto).
+    const audioTrack = await this.startShareAudio(sourceId).catch((err) => {
+      console.warn('[voz] áudio do compartilhamento indisponível', err);
+      return null;
+    });
+    if (audioTrack) stream.addTrack(audioTrack);
 
     this.screenStream = stream;
 
+    // O streamId é emitido depois de montar o stream final (vídeo + áudio): o id é o mesmo no receptor.
     this.socket.emit('voice:screen', { sharing: true, streamId: stream.id });
     for (const peer of this.peers.values()) this.addScreenTracks(peer);
 
-    stream.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreenShare());
+    video.addEventListener('ended', () => this.stopScreenShare());
     this.emitUpdate();
+  }
+
+  async startShareAudio(sourceId) {
+    const native = window.radioEsgoto?.screenAudio;
+    if (!native || !sourceId) return null;
+
+    const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+    await ctx.audioWorklet.addModule(screenAudioWorkletUrl);
+    const node = new AudioWorkletNode(ctx, 'pcm-player', { numberOfInputs: 0, outputChannelCount: [2] });
+    const dest = ctx.createMediaStreamDestination();
+    node.connect(dest);
+
+    const off = native.onChunk((buf) => node.port.postMessage(buf, [buf]));
+    const res = await native.start(sourceId);
+    if (!res?.ok) {
+      off();
+      node.disconnect();
+      await ctx.close();
+      console.info('[voz] compartilhando só vídeo:', res?.reason);
+      return null;
+    }
+
+    console.info('[voz] áudio do compartilhamento ativo:', res);
+    this.shareAudio = { ctx, node, off, native };
+    return dest.stream.getAudioTracks()[0];
+  }
+
+  stopShareAudio() {
+    const share = this.shareAudio;
+    if (!share) return;
+    this.shareAudio = null;
+    share.off();
+    share.native.stop().catch(() => {});
+    share.node.disconnect();
+    share.ctx.close().catch(() => {});
   }
 
   addScreenTracks(peer) {
@@ -214,6 +263,7 @@ export class VoiceSession {
       }
       peer.screenSenders = [];
     }
+    this.stopShareAudio();
     this.screenStream.getTracks().forEach((track) => track.stop());
     this.screenStream = null;
     this.socket.emit('voice:screen', { sharing: false });

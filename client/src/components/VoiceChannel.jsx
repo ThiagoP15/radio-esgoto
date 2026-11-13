@@ -86,7 +86,15 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
 
   const toggleMute = () => { sessionRef.current?.setMuted(!muted); setMuted(!muted); };
   const toggleNoise = async () => { try { await sessionRef.current.setNoiseSuppression(!state.noiseSuppression); } catch (err) { setError(explain(err)); } };
-  const startShare = async () => { setError(''); try { await sessionRef.current.startScreenShare(); } catch (err) { if (err?.name !== 'NotAllowedError') setError(explain(err)); } };
+  const startShare = async (sourceId = null) => {
+    setError('');
+    try {
+      await sessionRef.current.startScreenShare(sourceId);
+    } catch (err) {
+      console.error('[voz] falha ao compartilhar tela:', err?.name, err?.message, 'fonte =', sourceId, err);
+      if (err?.name !== 'NotAllowedError') setError(`${err?.name ?? 'Erro'}: ${explain(err)}`);
+    }
+  };
 
   const toggleScreen = async () => {
     if (state.sharing) return sessionRef.current.stopScreenShare();
@@ -98,7 +106,7 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
     return startShare();
   };
 
-  const pickSource = async (id) => { setSources(null); if (!id) return; await window.radioEsgoto.selectScreenSource(id); await startShare(); };
+  const pickSource = async (id) => { setSources(null); if (!id) return; await window.radioEsgoto.selectScreenSource(id); await startShare(id); };
 
   const tiles = [
     ...(state.screenStream ? [{ id: 'local', stream: state.screenStream, label: 'Sua tela', local: true, onStop: () => sessionRef.current?.stopScreenShare() }] : []),

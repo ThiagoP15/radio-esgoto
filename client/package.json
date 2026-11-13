@@ -1,16 +1,17 @@
 {
   "name": "radio-esgoto-client",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
  "scripts": {
-    "dev": "concurrently -k -n vite,electron -c magenta,cyan \"vite\" \"wait-on tcp:localhost:5173 && electron . --dev\"",
-    "build": "vite build",
-    "start": "vite build && electron .",
-    "dist": "npm run build && electron-builder --win",
-    "release": "npm run build && node -e \"const {execSync}=require('child_process');const v='v'+require('./package.json').version;try{execSync('git tag '+v)}catch{};execSync('git push origin '+v,{stdio:'inherit'})\" && electron-builder --win -p always"
-  },
+  "dev": "concurrently -k -n vite,electron -c magenta,cyan \"vite\" \"wait-on tcp:localhost:5173 && electron . --dev\"",
+  "build:native": "npm --prefix native/proc-loopback install && npm --prefix native/proc-loopback run build",
+  "build": "vite build",
+  "start": "vite build && electron .",
+  "dist": "npm run build:native && npm run build && electron-builder --win",
+  "release": "npm run build:native && npm run build && node -e \"const {execSync}=require('child_process');const v='v'+require('./package.json').version;try{execSync('git tag '+v)}catch{};execSync('git push origin '+v,{stdio:'inherit'})\" && electron-builder --win -p always"
+},
   "build": {
     "appId": "com.radioesgoto.app",
     "compression": "maximum",
@@ -19,6 +20,9 @@
       "pt-BR",
       "en-US"
     ],
+    "asarUnpack": [
+  "native/**/*.node"
+],
     "publish": [
       {
         "provider": "github",
@@ -28,12 +32,13 @@
       }
     ],
     "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "package.json",
-      "!**/*.map",
-      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme,*.ts}"
-    ],
+  "dist/**/*",
+  "electron/**/*",
+  "native/proc-loopback/build/Release/proc_loopback.node",
+  "package.json",
+  "!**/*.map",
+  "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme,*.ts}"
+],
     "win": {
       "target": [
         {
