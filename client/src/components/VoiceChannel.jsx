@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { socket } from '../socket.js';
 import { VoiceSession, SCREEN_QUALITY_PRESETS } from '../voice/VoiceSession.js';
+import { getUiSounds, playUiSound, setUiSounds } from '../UiSounds.js';
 import Avatar from './Avatar.jsx';
 import Icon from './Icon.jsx';
 import ScreenPicker from './ScreenPicker.jsx';
@@ -78,6 +79,9 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
 
   const [volumes, setVolumes] = useState({});
   const [hiddenScreens, setHiddenScreens] = useState({});
+  // id do tile em Modo Cinema (null = nenhum)
+  const [cinemaId, setCinemaId] = useState(null);
+  const [uiSounds, setUiSoundsState] = useState(getUiSounds);
 
   useEffect(() => {
     const session = new VoiceSession({
@@ -88,10 +92,14 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
     });
     sessionRef.current = session;
     let cancelled = false;
+    let joined = false;
     session
       .start()
       .then(() => {
-        if (!cancelled) setStatus('connected');
+        if (cancelled) return;
+        joined = true;
+        setStatus('connected');
+        playUiSound('join');
       })
       .catch((err) => {
         if (cancelled) return;
@@ -101,12 +109,21 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
     return () => {
       cancelled = true;
       session.stop();
+      if (joined) playUiSound('leave');
     };
   }, [channel.id]);
 
   const toggleMute = () => {
     sessionRef.current?.setMuted(!muted);
     setMuted(!muted);
+    playUiSound(muted ? 'unmute' : 'mute');
+  };
+
+  const toggleUiSounds = () => {
+    const next = !uiSounds;
+    setUiSounds(next);
+    setUiSoundsState(next);
+    if (next) playUiSound('unmute'); // confirma que ligou
   };
 
   const toggleNoise = async () => {
@@ -163,6 +180,7 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
             label: 'Sua tela',
             local: true,
             onStop: () => sessionRef.current?.stopScreenShare(),
+            getStats: () => sessionRef.current?.getScreenStats(null),
           },
         ]
       : []),
@@ -173,12 +191,23 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
         stream: p.screenStream,
         label: `Tela de ${p.user.username}`,
         local: false,
+        getStats: () => sessionRef.current?.getScreenStats(p.id),
       })),
   ];
 
+  // Sai do Modo Cinema se a aba de voz for ocultada (foi para um canal de texto) ou se a transmissão acabar.
+  useEffect(() => {
+    if (cinemaId && (hidden || !tiles.some((t) => t.id === cinemaId))) setCinemaId(null);
+  }, [cinemaId, hidden, tiles]);
+
   return (
     <>
-      <VideoGrid tiles={tiles} />
+      <VideoGrid
+        tiles={tiles}
+        cinemaId={cinemaId}
+        onCinemaChange={setCinemaId}
+        cinemaAvailable={!hidden}
+      />
       <section className="voice" hidden={hidden}>
         <header className="chat-header">
           <button type="button" className="menu-toggle" onClick={onToggleNav} aria-label="Abrir lista de canais">
@@ -252,6 +281,15 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
           </button>
           <button type="button" className="btn btn-secondary" onClick={toggleNoise} disabled={status !== 'connected'}>
             Supressão de ruído: {state.noiseSuppression ? 'ligada' : 'desligada'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={toggleUiSounds}
+            aria-pressed={uiSounds}
+            title="Efeitos sonoros de mutar, entrar e sair da chamada"
+          >
+            Sons: {uiSounds ? 'ligados' : 'desligados'}
           </button>
           <select
             value={quality}

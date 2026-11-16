@@ -649,3 +649,68 @@ select { background: var(--bg-0); }
 }
 aside.members.rr-members { padding: 0 !important; }
 aside.members.rr-members::before { display: none !important; content: none !important; }
+/* ==========================================================================================
+   PICTURE-IN-PICTURE + MODO CINEMA
+  
+   ========================================================================================== */
+
+/* Barra de ações do tile agora tem mais botões: quebra linha em vez de estourar a largura */
+.video-tile figcaption { flex-wrap: wrap; }
+.video-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+/* Botão de alternância ligado (PiP ativo / Cinema ativo) */
+.link-button.is-active { color: var(--amber-glow); }
+.link-button.is-active:hover:not(:disabled) { color: var(--text-strong); }
+
+/* ---- Modo Cinema ----------------------------------------------------------------------
+   O vídeo ocupa a coluna central inteira e também a coluna de membros ("NO ESGOTO"),
+   mas a barra lateral de canais continua visível. Não usa fullscreen do monitor.
+   Usa :has() (Chromium 105+; o Electron 33 traz Chromium 130), então não precisa mexer
+   no Workspace.jsx: o layout reage à classe .is-cinema do próprio tile.
+   O rodapé de controles da chamada (mutar, sair...) continua acessível. ---------------- */
+.app:has(.video-tile.is-cinema) { grid-template-columns: 264px minmax(0, 1fr); }
+.app:has(.video-tile.is-cinema) .members { display: none; }
+
+.main:has(.video-tile.is-cinema) .voice { flex: none; }
+.main:has(.video-tile.is-cinema) .voice-body { display: none; } /* lista de participantes da sala */
+
+.video-grid:has(.video-tile.is-cinema) {
+  flex: 1 1 0; min-height: 0; max-height: none; overflow: hidden; padding: 0;
+  grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
+}
+.video-grid:has(.video-tile.is-cinema) .video-tile:not(.is-cinema) { display: none; } /* o som das outras continua tocando */
+
+.video-tile.is-cinema { display: flex; flex-direction: column; min-height: 0; border-color: var(--brass); }
+.video-tile.is-cinema video { flex: 1 1 0; min-height: 0; max-height: none; }
+
+/* Mantém as larguras de coluna dos breakpoints responsivos existentes */
+@media (max-width: 1040px) {
+  .app:has(.video-tile.is-cinema) { grid-template-columns: 240px minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .app:has(.video-tile.is-cinema) { grid-template-columns: minmax(0, 1fr); }
+}
+/* ==========================================================================================
+   NERD STATS (overlay estilo terminal sobre o vídeo)
+  
+   ========================================================================================== */
+
+/* O overlay se posiciona em relação ao tile. A tela cheia usa position: fixed !important, então não é afetada. */
+.video-tile { position: relative; }
+
+.video-stats {
+  --stats-ink: #9ad4a0; /* verde de terminal, legível sobre fundo preto (o --sewer-green é escuro demais para texto) */
+  position: absolute; top: 6px; left: 6px; z-index: 2; min-width: 176px; padding: 6px 10px;
+  background: rgba(8, 11, 9, 0.84); border: 1px solid var(--brass-dim);
+  font-family: var(--font-type); font-size: 11px; line-height: 1.4; letter-spacing: 0.04em;
+  color: var(--stats-ink); text-shadow: 0 0 6px rgba(154, 212, 160, 0.3);
+  pointer-events: none; /* não atrapalha o duplo clique de tela cheia */
+}
+/* Tile local com a prévia oculta: o painel entra no fluxo do aviso "Transmissão ativa para o esgoto" */
+.video-stats.is-inline { position: static; margin-top: 2px; }
+
+.video-stats-title { margin-bottom: 3px; color: var(--amber-glow); letter-spacing: 0.14em; }
+.video-stats-note { color: var(--text-dim); }
+.video-stats-grid { display: grid; grid-template-columns: auto 1fr; gap: 0 16px; margin: 0; }
+.video-stats-grid dt { color: var(--text-dim); }
+.video-stats-grid dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }

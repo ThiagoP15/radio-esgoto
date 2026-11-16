@@ -66,6 +66,50 @@ function enhanceSdpQuality(sdp, preset) {
   return out;
 }
 
+/**
+ * Lê as estatísticas de VÍDEO (a tela compartilhada) de uma RTCPeerConnection para o "Nerd Stats".
+ * Devolve contadores acumulados: o bitrate é calculado por quem chama (diferença entre duas leituras).
+ * direction: 'in' (tela recebida) | 'out' (a sua tela sendo enviada).
+ */
+async function readVideoStats(pc, direction) {
+  const report = await pc.getStats();
+  const all = [...report.values()];
+
+  const rtpType = direction === 'in' ? 'inbound-rtp' : 'outbound-rtp';
+  const rtp = all.find((r) => r.type === rtpType && (r.kind ?? r.mediaType) === 'video');
+  if (!rtp) return null;
+
+  const transport = all.find((r) => r.type === 'transport');
+  const pair =
+    (transport?.selectedCandidatePairId && report.get(transport.selectedCandidatePairId)) ||
+    all.find((r) => r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') ||
+    null;
+
+  let rttMs;
+  if (Number.isFinite(pair?.currentRoundTripTime)) {
+    rttMs = pair.currentRoundTripTime * 1000;
+  } else if (pair?.responsesReceived > 0 && Number.isFinite(pair.totalRoundTripTime)) {
+    rttMs = (pair.totalRoundTripTime / pair.responsesReceived) * 1000;
+  }
+
+  const codec = rtp.codecId ? report.get(rtp.codecId) : null;
+
+  return {
+    direction,
+    peers: 1,
+    bytes: (direction === 'in' ? rtp.bytesReceived : rtp.bytesSent) ?? 0,
+    timestamp: rtp.timestamp,
+    fps: rtp.framesPerSecond,
+    width: rtp.frameWidth,
+    height: rtp.frameHeight,
+    codec: codec?.mimeType?.replace(/^video\//i, ''),
+    rttMs,
+    limitation: direction === 'out' ? rtp.qualityLimitationReason ?? 'none' : undefined,
+  };
+}
+
+const LIMITATION_RANK = { none: 0, other: 1, bandwidth: 2, cpu: 3 };
+
 export class VoiceSession {
   constructor({ socket, channelId, iceServers = [], onUpdate }) {
     this.socket = socket;
@@ -409,6 +453,51 @@ export class VoiceSession {
     this.screenStream = null;
     this.socket.emit('voice:screen', { sharing: false });
     this.emitUpdate();
+  }
+
+  /**
+   * Estatísticas da transmissão de tela para o "Nerd Stats" (somente leitura).
+   * peerId = id do peer: tela RECEBIDA dele. peerId = null: a SUA tela sendo ENVIADA
+   * (na malha P2P cada peer recebe um fluxo próprio, então somamos os bytes e mostramos o pior caso de FPS/ping).
+   * Devolve null se não houver dados.
+   */
+  async getScreenStats(peerId = null) {
+    if (this.stopped) return null;
+
+    if (peerId) {
+      const peer = this.peers.get(peerId);
+      return peer ? readVideoStats(peer.pc, 'in') : null;
+    }
+
+    if (!this.screenStream) return null;
+    const receivers = [...this.peers.values()].filter((p) => p.screenSenders.length > 0);
+    if (receivers.length === 0) return { direction: 'out', peers: 0 };
+
+    const results = (await Promise.all(receivers.map((p) => readVideoStats(p.pc, 'out').catch(() => null)))).filter(
+      Boolean,
+    );
+    if (results.length === 0) return { direction: 'out', peers: receivers.length };
+
+    const finite = (key) => results.map((r) => r[key]).filter(Number.isFinite);
+    const fps = finite('fps');
+    const rtt = finite('rttMs');
+    const worst = results.reduce(
+      (acc, r) => ((LIMITATION_RANK[r.limitation] ?? 0) > (LIMITATION_RANK[acc] ?? 0) ? r.limitation : acc),
+      'none',
+    );
+
+    return {
+      direction: 'out',
+      peers: results.length,
+      bytes: results.reduce((sum, r) => sum + r.bytes, 0),
+      timestamp: Math.max(...results.map((r) => r.timestamp)),
+      fps: fps.length ? Math.min(...fps) : undefined,
+      width: results[0].width,
+      height: results[0].height,
+      codec: results[0].codec,
+      rttMs: rtt.length ? Math.max(...rtt) : undefined,
+      limitation: worst,
+    };
   }
 
   onRemoteScreen({ from, sharing, streamId }) {
