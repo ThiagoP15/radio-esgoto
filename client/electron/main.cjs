@@ -246,6 +246,18 @@ if (!app.requestSingleInstanceLock()) {
     if (app.isPackaged) {
       autoUpdater.autoDownload = true;
       autoUpdater.autoInstallOnAppQuit = true;
+
+      // 1. Avisa assim que o GitHub confirmar que há uma versão nova
+      autoUpdater.on('update-available', (info) => {
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'Atualização do Rádio Esgoto',
+          message: `A versão ${info.version} foi encontrada! O download está rodando em segundo plano.`,
+          buttons: ['Entendi']
+        });
+      });
+
+      // 2. O seu alerta original de download concluído (mantido intacto)
       autoUpdater.on('update-downloaded', (info) => {
         dialog
           .showMessageBox({
@@ -259,6 +271,15 @@ if (!app.requestSingleInstanceLock()) {
             if (response === 0) autoUpdater.quitAndInstall(false, true);
           });
       });
+
+      // 3. O DETETIVE: Qualquer erro no GitHub ou no download vai saltar na tela
+      autoUpdater.on('error', (err) => {
+        dialog.showErrorBox(
+          'Erro Crítico na Atualização',
+          `Não foi possível verificar ou baixar a atualização:\n${err.message}`
+        );
+      });
+
       autoUpdater.checkForUpdates();
       setInterval(() => autoUpdater.checkForUpdates(), 10 * 60 * 1000);
     }
