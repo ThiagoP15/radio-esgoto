@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { socket } from '../socket.js';
 import { VoiceSession, SCREEN_QUALITY_PRESETS } from '../voice/VoiceSession.js';
 import { getUiSounds, playUiSound, setUiSounds } from '../UiSounds.js';
+import { getOverlayPref, setOverlayPref, useOverlayBridge } from '../overlay/useOverlayBridge.js';
 import Avatar from './Avatar.jsx';
 import Icon from './Icon.jsx';
 import ScreenPicker from './ScreenPicker.jsx';
@@ -82,6 +83,9 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
   // id do tile em Modo Cinema (null = nenhum)
   const [cinemaId, setCinemaId] = useState(null);
   const [uiSounds, setUiSoundsState] = useState(getUiSounds);
+  // Overlay para jogos: só existe no app desktop (Electron). Preferência persiste entre chamadas.
+  const overlayApi = window.radioEsgoto?.overlay;
+  const [overlayOn, setOverlayOn] = useState(getOverlayPref);
 
   useEffect(() => {
     const session = new VoiceSession({
@@ -200,6 +204,22 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
     if (cinemaId && (hidden || !tiles.some((t) => t.id === cinemaId))) setCinemaId(null);
   }, [cinemaId, hidden, tiles]);
 
+  useEffect(() => {
+    setOverlayPref(overlayOn);
+  }, [overlayOn]);
+
+  // Atalho global (Ctrl+Shift+O, registrado no main.cjs) funciona com o jogo em foco.
+  useEffect(() => overlayApi?.onToggleRequest?.(() => setOverlayOn((on) => !on)), [overlayApi]);
+
+  useOverlayBridge({
+    enabled: Boolean(overlayApi) && overlayOn && status === 'connected',
+    selfName: user.username,
+    selfAvatar: user.avatar_url,
+    peers: state.peers,
+    noiseSuppression: state.noiseSuppression,
+    getLocalStream: () => sessionRef.current?.localStream ?? null,
+  });
+
   return (
     <>
       <VideoGrid
@@ -291,20 +311,34 @@ export default function VoiceChannel({ channel, user, hidden, onLeave, onToggleN
           >
             Sons: {uiSounds ? 'ligados' : 'desligados'}
           </button>
-          <select
-            value={quality}
-            onChange={handleQualityChange}
-            disabled={status !== 'connected'}
-            aria-label="Qualidade da transmissão"
-            title="Qualidade da transmissão de tela"
-            style={{ width: 'auto', minWidth: '175px', cursor: 'pointer' }}
-          >
-            {Object.values(SCREEN_QUALITY_PRESETS).map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
+          {overlayApi && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setOverlayOn((on) => !on)}
+              aria-pressed={overlayOn}
+              title="Avatares flutuantes sobre o jogo, com borda dourada em quem fala (atalho: Ctrl+Shift+O)"
+            >
+              Overlay: {overlayOn ? 'ligado' : 'desligado'}
+            </button>
+          )}
+          {/* Mesma placa dos outros botões: o <select> usa .btn .btn-secondary; o span só desenha a seta. */}
+          <span className="select-btn">
+            <select
+              className="btn btn-secondary"
+              value={quality}
+              onChange={handleQualityChange}
+              disabled={status !== 'connected'}
+              aria-label="Qualidade da transmissão"
+              title="Qualidade da transmissão de tela"
+            >
+              {Object.values(SCREEN_QUALITY_PRESETS).map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </span>
           <button type="button" className="btn btn-secondary" onClick={toggleScreen} disabled={status !== 'connected'}>
             {state.sharing ? 'Parar Transmissão' : 'Compartilhar Tela'}
           </button>

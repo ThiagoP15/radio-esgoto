@@ -714,3 +714,34 @@ aside.members.rr-members::before { display: none !important; content: none !impo
 .video-stats-grid { display: grid; grid-template-columns: auto 1fr; gap: 0 16px; margin: 0; }
 .video-stats-grid dt { color: var(--text-dim); }
 .video-stats-grid dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ==========================================================================================
+   SELETOR DE QUALIDADE com a mesma placa metálica dos outros botões da chamada.
+   ========================================================================================== */
+.select-btn { position: relative; display: inline-flex; }
+
+.select-btn select.btn {
+  appearance: none; -webkit-appearance: none; /* tira a seta e o visual nativo do Windows */
+  min-width: 190px; padding-right: 34px; /* espaço para a seta */
+  text-align: center; text-align-last: center; /* texto centralizado como nos outros botões */
+  cursor: pointer;
+}
+.select-btn select.btn:disabled { cursor: not-allowed; }
+
+/* A regra genérica `select:focus` põe um brilho retangular; aqui ele não combina com a placa */
+.select-btn select.btn:focus { box-shadow: none; }
+.select-btn select.btn:focus-visible { outline: 1px dashed var(--amber-glow); outline-offset: -4px; }
+
+/* Lista que abre ao clicar: fundo escuro e texto legível, sem a caixa alta/espaçamento do botão */
+.select-btn select.btn option {
+  background: var(--bg-1); color: var(--text);
+  font-family: var(--font-body); font-size: 15px; letter-spacing: normal; text-transform: none;
+}
+
+/* Seta desenhada à parte: como a moldura da placa preenche o centro, uma seta de fundo ficaria escondida */
+.select-btn::after {
+  content: ''; position: absolute; right: 22px; top: 50%; width: 7px; height: 7px;
+  border-right: 2px solid var(--brass); border-bottom: 2px solid var(--brass);
+  transform: translateY(-75%) rotate(45deg); pointer-events: none;
+}
+.select-btn:has(select:disabled)::after { opacity: 0.4; }

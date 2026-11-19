@@ -1,0 +1,96 @@
+/* ==========================================================================================
+   OVERLAY PARA JOGOS (rota #/overlay). Tudo escopado em html.is-overlay / .overlay-*,
+   então não afeta o app principal mesmo estando no mesmo bundle.
+   ========================================================================================== */
+
+/* A janela é transparente: nenhum fundo, textura ou camada de efeito pode aparecer */
+html.is-overlay,
+html.is-overlay body,
+html.is-overlay #root {
+  background: transparent !important;
+}
+html.is-overlay body {
+  margin: 0;
+  overflow: hidden;
+  user-select: none;
+  pointer-events: none;
+}
+html.is-overlay body::before,
+html.is-overlay body::after {
+  display: none !important;
+}
+
+/* Lista vertical no canto da tela. Mantenha 44px (avatar) + 8px (espaço entre linhas) em sincronia com
+   OVERLAY_ROW (52) no electron/main.cjs, e a largura do nome (150px) com OVERLAY_WIDTH (230) lá também. */
+.overlay-list {
+  list-style: none;
+  margin: 0;
+  padding: 12px; /* folga para o brilho dourado não ser cortado pela borda da janela */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* No canto direito da tela, os nomes ficam À ESQUERDA dos avatares e tudo encosta na borda */
+.overlay-list[data-side='right'] {
+  align-items: flex-end;
+}
+
+/* Cada linha: avatar + nick. Quem não está falando fica discreto (a linha toda). */
+.overlay-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+.overlay-item.is-speaking {
+  opacity: 1;
+}
+.overlay-list[data-side='right'] .overlay-item {
+  flex-direction: row-reverse;
+}
+
+/* A "borda" do avatar é feita com drop-shadow (e não border) para acompanhar o formato dele,
+   seja qual for a moldura que o componente Avatar desenha. */
+.overlay-avatar {
+  --ring: transparent;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  filter: drop-shadow(2px 0 0 var(--ring)) drop-shadow(-2px 0 0 var(--ring)) drop-shadow(0 2px 0 var(--ring))
+    drop-shadow(0 -2px 0 var(--ring)) drop-shadow(0 0 8px var(--ring));
+  transition: filter 120ms ease;
+}
+.overlay-item.is-speaking .overlay-avatar {
+  --ring: var(--brass);
+}
+
+/* Nick numa plaquinha escura: legível sobre qualquer cena de jogo, na fonte de cartaz do app */
+.overlay-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 9px;
+  background: rgba(8, 11, 9, 0.78);
+  border: 1px solid var(--brass-dim);
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.overlay-item.is-speaking .overlay-name {
+  border-color: var(--brass);
+  color: var(--amber-glow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-item,
+  .overlay-avatar,
+  .overlay-name {
+    transition: none;
+  }
+}

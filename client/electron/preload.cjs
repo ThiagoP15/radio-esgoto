@@ -23,4 +23,20 @@ contextBridge.exposeInMainWorld('radioEsgoto', {
       return () => ipcRenderer.removeListener('screen:audio-chunk', listener);
     },
   },
+  // Overlay para jogos. Janela principal: setOpen / update / onToggleRequest. Janela do overlay: getState / onState.
+  overlay: {
+    setOpen: (open) => ipcRenderer.invoke('overlay:set-open', Boolean(open)),
+    update: (state) => ipcRenderer.send('overlay:update', state),
+    onToggleRequest: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on('overlay:toggle-request', listener);
+      return () => ipcRenderer.removeListener('overlay:toggle-request', listener);
+    },
+    getState: () => ipcRenderer.invoke('overlay:get-state'),
+    onState: (callback) => {
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on('overlay:state', listener);
+      return () => ipcRenderer.removeListener('overlay:state', listener);
+    },
+  },
 });

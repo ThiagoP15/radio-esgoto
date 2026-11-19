@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { app, BrowserWindow, desktopCapturer, dialog, ipcMain, net, protocol, session, shell, systemPreferences } = require('electron');
+const { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, net, protocol, screen, session, shell, systemPreferences } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
 // Captura de áudio por processo (WASAPI Process Loopback). Só Windows 10 build 20348+ / 11.
@@ -52,6 +52,8 @@ function isTrustedUrl(raw) {
 }
 const isTrustedSender = (event) => isTrustedUrl(event.senderFrame?.url ?? '');
 
+let mainWindow = null;
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1320,
@@ -76,6 +78,14 @@ function createWindow() {
   });
 
   win.once('ready-to-show', () => win.show());
+
+  mainWindow = win;
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+    closeOverlay(); // sem a janela principal o overlay não pode ficar na tela
+  });
+  // Recarregar a janela principal derruba a chamada: o overlay não pode ficar órfão mostrando gente que saiu.
+  win.webContents.on('did-start-loading', closeOverlay);
 
   // DevTools: automático no `npm run dev`; no app empacotado só com RADIO_DEVTOOLS=1.
   // Atalhos (nesses casos): F12 ou Ctrl+Shift+I.
@@ -183,6 +193,136 @@ ipcMain.handle('screen:audio-stop', (event) => {
 });
 
 app.on('before-quit', () => procAudio?.stop());
+app.on('will-quit', () => globalShortcut.unregisterAll());
+
+// --- Overlay para jogos ---------------------------------------------------------
+// Janela transparente, sempre no topo e "atravessável" pelo mouse, com os avatares de quem está na chamada.
+// Carrega a rota #/overlay do próprio React. A detecção de voz roda na janela principal (só ela enxerga os
+// MediaStream) e chega aqui por IPC; esta janela só repassa. Jogos em tela cheia EXCLUSIVA escondem qualquer
+// overlay: funciona sobre jogos em janela e em tela cheia sem borda.
+const OVERLAY_SHORTCUT = 'CommandOrControl+Shift+O'; // liga/desliga, mesmo com o jogo em foco
+const OVERLAY_SIDE = 'left'; // 'left' | 'right': canto superior da tela principal
+const OVERLAY_MARGIN = 16;
+const OVERLAY_WIDTH = 230; // 12 + 44 (avatar) + 8 + até 150 (nick) + 12 + folga; igual ao overlay.css
+const OVERLAY_ROW = 52; // 44 (avatar) + 8 (espaço); igual ao overlay.css
+const OVERLAY_MAX_ROWS = 12;
+
+let overlayWin = null;
+let overlayRows = 0;
+let overlayState = { side: OVERLAY_SIDE, participants: [] };
+
+function overlayBoundsFor(count) {
+  const { workArea } = screen.getPrimaryDisplay();
+  const rows = Math.max(1, Math.min(count, OVERLAY_MAX_ROWS));
+  const height = Math.min(16 + rows * OVERLAY_ROW, workArea.height - OVERLAY_MARGIN * 2);
+  const x =
+    OVERLAY_SIDE === 'right'
+      ? workArea.x + workArea.width - OVERLAY_WIDTH - OVERLAY_MARGIN
+      : workArea.x + OVERLAY_MARGIN;
+  return { x, y: workArea.y + OVERLAY_MARGIN, width: OVERLAY_WIDTH, height };
+}
+
+function sanitizeOverlayState(state) {
+  const list = Array.isArray(state?.participants) ? state.participants.slice(0, OVERLAY_MAX_ROWS) : [];
+  return {
+    side: OVERLAY_SIDE, // o overlay usa para posicionar o nick (à direita do avatar, ou à esquerda no canto direito)
+    participants: list.map((p) => ({
+      id: String(p?.id ?? '').slice(0, 64),
+      name: String(p?.name ?? '').slice(0, 64),
+      avatar: typeof p?.avatar === 'string' ? p.avatar.slice(0, 2048) : null,
+      speaking: Boolean(p?.speaking),
+    })),
+  };
+}
+
+function openOverlay() {
+  if (overlayWin && !overlayWin.isDestroyed()) return;
+
+  overlayRows = overlayState.participants.length;
+  const win = new BrowserWindow({
+    ...overlayBoundsFor(overlayRows),
+    title: 'Rádio Esgoto (overlay)',
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    hasShadow: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false, // não rouba o foco do jogo ao aparecer
+    show: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      backgroundThrottling: false,
+    },
+  });
+  overlayWin = win;
+
+  win.setAlwaysOnTop(true, 'screen-saver'); // nível alto: fica acima de jogos em janela sem borda
+  win.setIgnoreMouseEvents(true); // cliques atravessam o overlay
+  win.once('ready-to-show', () => win.showInactive());
+  win.on('closed', () => {
+    if (overlayWin === win) overlayWin = null;
+  });
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event) => event.preventDefault());
+
+  const base = isDev ? `${DEV_URL.replace(/\/$/, '')}/` : `${APP_ORIGIN}/index.html`;
+  win.loadURL(`${base}#/overlay`);
+}
+
+function closeOverlay() {
+  const win = overlayWin;
+  overlayWin = null;
+  overlayState = { side: OVERLAY_SIDE, participants: [] };
+  overlayRows = 0;
+  if (win && !win.isDestroyed()) win.destroy();
+}
+
+// Só a janela principal controla o overlay.
+const isMainSender = (event) =>
+  Boolean(mainWindow) && event.sender === mainWindow.webContents && isTrustedSender(event);
+
+ipcMain.handle('overlay:set-open', (event, open) => {
+  if (!isMainSender(event)) throw new Error('Remetente não autorizado.');
+  if (open) openOverlay();
+  else closeOverlay();
+  return Boolean(overlayWin);
+});
+
+ipcMain.on('overlay:update', (event, state) => {
+  if (!isMainSender(event)) return;
+  overlayState = sanitizeOverlayState(state); // guarda mesmo sem janela: o overlay lê ao abrir
+  if (!overlayWin || overlayWin.isDestroyed()) return;
+
+  const count = overlayState.participants.length;
+  if (count !== overlayRows) {
+    overlayRows = count;
+    overlayWin.setBounds(overlayBoundsFor(count));
+  }
+  overlayWin.webContents.send('overlay:state', overlayState);
+});
+
+ipcMain.handle('overlay:get-state', (event) => {
+  if (!isTrustedSender(event)) throw new Error('Remetente não autorizado.');
+  return overlayState;
+});
+
+function registerOverlayShortcut() {
+  const ok = globalShortcut.register(OVERLAY_SHORTCUT, () => {
+    // Quem sabe se há chamada é o React: só ele responde ao pedido.
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('overlay:toggle-request');
+  });
+  if (!ok) console.warn(`[overlay] atalho ${OVERLAY_SHORTCUT} indisponível (em uso por outro programa).`);
+}
 
 function configureSession(ses) {
   ses.setDisplayMediaRequestHandler(
@@ -222,8 +362,8 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    const [win] = BrowserWindow.getAllWindows();
-    if (win) {
+    const win = mainWindow; // getAllWindows()[0] poderia ser o overlay
+    if (win && !win.isDestroyed()) {
       if (win.isMinimized()) win.restore();
       win.focus();
     }
@@ -242,6 +382,7 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone').catch(() => {});
 
     createWindow();
+    registerOverlayShortcut();
 
     if (app.isPackaged) {
       autoUpdater.autoDownload = true;
